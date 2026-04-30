@@ -12,8 +12,11 @@ test-util = []
 crash_reporting = ["dep:sentry"]
 
 [dependencies]
+aes-gcm.workspace = true
 async-channel.workspace = true
 async-trait.workspace = true
+argon2.workspace = true
+base64.workspace = true
 bincode.workspace = true
 bytes.workspace = true
 cfg-if.workspace = true
@@ -59,9 +62,11 @@ warp_util.workspace = true
 chrono.workspace = true
 persistence.workspace = true
 priority-queue = "2.3.1"
+rand.workspace = true
 repo_metadata.workspace = true
 uuid.workspace = true
 unicode-width.workspace = true
+zeroize.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 nix.workspace = true

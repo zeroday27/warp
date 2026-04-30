@@ -112,6 +112,12 @@ pub(super) enum CliTelemetryEvent {
     HarnessSupportNotifyUser,
     /// Executing `warp harness-support finish-task`
     HarnessSupportFinishTask { success: bool },
+    /// Executing `warp vault encrypt`
+    VaultEncrypt,
+    /// Executing `warp vault decrypt`
+    VaultDecrypt,
+    /// Executing `warp vault view`
+    VaultView,
 }
 
 impl TelemetryEvent for CliTelemetryEvent {
@@ -188,6 +194,9 @@ impl TelemetryEvent for CliTelemetryEvent {
             CliTelemetryEvent::HarnessSupportFinishTask { success } => {
                 Some(json!({ "success": success }))
             }
+            CliTelemetryEvent::VaultEncrypt => None,
+            CliTelemetryEvent::VaultDecrypt => None,
+            CliTelemetryEvent::VaultView => None,
         }
     }
 
@@ -274,6 +283,9 @@ impl TelemetryEventDesc for CliTelemetryEventDiscriminants {
             CliTelemetryEventDiscriminants::HarnessSupportFinishTask => {
                 "CLI.Execute.HarnessSupport.FinishTask"
             }
+            CliTelemetryEventDiscriminants::VaultEncrypt => "CLI.Execute.Vault.Encrypt",
+            CliTelemetryEventDiscriminants::VaultDecrypt => "CLI.Execute.Vault.Decrypt",
+            CliTelemetryEventDiscriminants::VaultView => "CLI.Execute.Vault.View",
         }
     }
 
@@ -396,6 +408,13 @@ impl TelemetryEventDesc for CliTelemetryEventDiscriminants {
             CliTelemetryEventDiscriminants::HarnessSupportFinishTask => {
                 "Reported task completion via harness-support from the Warp CLI"
             }
+            CliTelemetryEventDiscriminants::VaultEncrypt => {
+                "Encrypted a vault file from the Warp CLI"
+            }
+            CliTelemetryEventDiscriminants::VaultDecrypt => {
+                "Decrypted a vault file from the Warp CLI"
+            }
+            CliTelemetryEventDiscriminants::VaultView => "Viewed a vault file from the Warp CLI",
         }
     }
 

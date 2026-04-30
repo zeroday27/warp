@@ -38,6 +38,7 @@ use warp_cli::{
     secret::SecretCommand,
     share::ShareRequest,
     task::{MessageCommand, TaskCommand},
+    vault::VaultCommand,
     CliCommand, GlobalOptions,
 };
 use warp_core::features::FeatureFlag;
@@ -64,7 +65,8 @@ use warp_graphql::object_permissions::OwnerType;
 
 use crate::ai::attachment_utils::attachments_download_dir;
 use crate::ai::skills::{
-    clone_repo_for_skill, resolve_skill_spec, ResolveSkillError, ResolvedSkill,
+    clone_repo_for_skill, resolve_skill_spec_with_vault_password_file, ResolveSkillError,
+    ResolvedSkill,
 };
 
 pub(crate) use driver::harness::{
@@ -104,6 +106,7 @@ mod telemetry;
 #[cfg(test)]
 mod test_support;
 mod text_layout;
+mod vault;
 
 /// Prints a non-blocking warning to stderr when the CLI is invoked with a team-scoped API key.
 fn maybe_warn_team_api_key(ctx: &AppContext) {
@@ -198,6 +201,7 @@ fn dispatch_command(
             }
             artifact::run(ctx, global_options, artifact_cmd)
         }
+        CliCommand::Vault(vault_cmd) => vault::run(vault_cmd),
     }
 }
 
@@ -732,8 +736,16 @@ impl AgentDriverRunner {
         }
 
         let working_dir_buf = working_dir.to_path_buf();
+        let vault_password_file = args.vault_password_file.clone();
         let skill = foreground
-            .spawn(move |_, ctx| resolve_skill_spec(&skill_spec, &working_dir_buf, ctx))
+            .spawn(move |_, ctx| {
+                resolve_skill_spec_with_vault_password_file(
+                    &skill_spec,
+                    &working_dir_buf,
+                    vault_password_file.as_deref(),
+                    ctx,
+                )
+            })
             .await?
             .map_err(|err| {
                 AgentDriverError::SkillResolutionFailed(format_skill_resolution_error(err))
@@ -1282,6 +1294,7 @@ fn command_requires_auth(command: &CliCommand) -> bool {
         CliCommand::Federate(_) => true,
         CliCommand::HarnessSupport(_) => true,
         CliCommand::Artifact(_) => true,
+        CliCommand::Vault(_) => false,
     }
 }
 
@@ -1501,6 +1514,11 @@ fn command_to_telemetry_event(command: &CliCommand) -> CliTelemetryEvent {
             ArtifactCommand::Upload(_) => CliTelemetryEvent::ArtifactUpload,
             ArtifactCommand::Get(_) => CliTelemetryEvent::ArtifactGet,
             ArtifactCommand::Download(_) => CliTelemetryEvent::ArtifactDownload,
+        },
+        CliCommand::Vault(vault_cmd) => match vault_cmd {
+            VaultCommand::Encrypt(_) => CliTelemetryEvent::VaultEncrypt,
+            VaultCommand::Decrypt(_) => CliTelemetryEvent::VaultDecrypt,
+            VaultCommand::View(_) => CliTelemetryEvent::VaultView,
         },
     }
 }

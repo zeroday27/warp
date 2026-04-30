@@ -19,6 +19,34 @@ fn write_skill_file(path: &Path, name: &str, description: &str, body: &str) -> R
 }
 
 #[test]
+fn resolve_encrypted_skill_with_password_file() -> Result<()> {
+    let temp_dir = tempfile::TempDir::new().context("Failed to create temp dir")?;
+    let root = temp_dir.path();
+    let skill_path = root.join(".warp/skills/vault-skill/SKILL.md");
+    let plaintext = "---\nname: vault-skill\ndescription: Vault backed skill\n---\n\n# Vault Skill\n\nSensitive instructions.\n";
+    let encrypted = ai::vault::encrypt_to_vault_text(plaintext.as_bytes(), "vault-password")?;
+    let parent = skill_path
+        .parent()
+        .with_context(|| format!("Missing parent for {}", skill_path.display()))?;
+    fs::create_dir_all(parent)?;
+    fs::write(&skill_path, encrypted)?;
+
+    let password_file = root.join("vault-password");
+    fs::write(&password_file, "vault-password\n")?;
+
+    let spec = SkillSpec::without_repo("vault-skill".to_string());
+    let resolved = resolve_from_root_path_by_directory_scan(&spec, root, Some(&password_file))?
+        .context("Expected to resolve encrypted skill by name")?;
+
+    assert_eq!(resolved.skill_path, skill_path);
+    assert_eq!(resolved.name, "vault-skill");
+    assert!(resolved.instructions.contains("Sensitive instructions."));
+    assert!(!resolved.instructions.contains("name:"));
+
+    Ok(())
+}
+
+#[test]
 fn resolve_from_skill_dirs_by_directory_scan_resolves_home_skill_dir() -> Result<()> {
     let temp_dir = tempfile::TempDir::new().context("Failed to create temp dir")?;
     let skill_dir = temp_dir.path().join(".warp").join("skills");
@@ -32,7 +60,7 @@ fn resolve_from_skill_dirs_by_directory_scan_resolves_home_skill_dir() -> Result
     )?;
 
     let spec = SkillSpec::without_repo("my-skill".to_string());
-    let resolved = resolve_from_skill_dirs_by_directory_scan(&spec, [skill_dir])?
+    let resolved = resolve_from_skill_dirs_by_directory_scan(&spec, [skill_dir], None)?
         .context("Expected to resolve skill from explicit home skill dir")?;
 
     assert_eq!(resolved.skill_path, skill_path);
@@ -78,7 +106,7 @@ fn resolve_from_root_path_by_directory_scan_respects_directory_precedence() -> R
         "# Codex version\n\nDo not pick this when .claude exists.",
     )?;
 
-    let resolved = resolve_from_root_path_by_directory_scan(&spec, root)?
+    let resolved = resolve_from_root_path_by_directory_scan(&spec, root, None)?
         .context("Expected to resolve skill via directory scan")?;
 
     assert_eq!(resolved.skill_path, agents_skill);
@@ -157,7 +185,7 @@ fn resolve_with_full_path_skips_directory_precedence() -> Result<()> {
     // Resolve using full path to .claude skill - should get .claude version, not .agents
     // (even though .agents has higher precedence when using simple names)
     let spec = SkillSpec::without_repo(".claude/skills/my-skill/SKILL.md".to_string());
-    let resolved = resolve_from_root_path_by_directory_scan(&spec, root)?
+    let resolved = resolve_from_root_path_by_directory_scan(&spec, root, None)?
         .context("Expected to resolve skill via full path")?;
 
     assert_eq!(resolved.skill_path, claude_skill);
@@ -174,7 +202,7 @@ fn resolve_with_full_path_returns_none_if_not_found() -> Result<()> {
 
     // Try to resolve a full path that doesn't exist
     let spec = SkillSpec::without_repo(".claude/skills/nonexistent/SKILL.md".to_string());
-    let resolved = resolve_from_root_path_by_directory_scan(&spec, root)?;
+    let resolved = resolve_from_root_path_by_directory_scan(&spec, root, None)?;
 
     assert!(resolved.is_none());
 
@@ -214,7 +242,7 @@ fn resolve_simple_name_uses_directory_precedence() -> Result<()> {
 
     // Resolve using simple name - should get .agents version due to precedence
     let spec = SkillSpec::without_repo("my-skill".to_string());
-    let resolved = resolve_from_root_path_by_directory_scan(&spec, root)?
+    let resolved = resolve_from_root_path_by_directory_scan(&spec, root, None)?
         .context("Expected to resolve skill by name")?;
     assert_eq!(resolved.skill_path, agents_skill);
     assert!(resolved.instructions.contains("Agents version"));

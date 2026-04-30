@@ -5,7 +5,7 @@ use std::fmt::Display;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 
-use super::parser::parse_markdown_file;
+use super::parser::{parse_markdown_file, parse_markdown_file_with_vault_password_file};
 use super::skill_provider::{get_provider_for_path, get_scope_for_path, SkillProvider, SkillScope};
 use thiserror::Error;
 
@@ -66,7 +66,17 @@ impl Display for ParsedSkill {
 pub fn parse_skill(path: &Path) -> Result<ParsedSkill> {
     let provider = get_provider_for_path(path).unwrap_or(SkillProvider::Agents);
     let scope = get_scope_for_path(path);
-    parse_skill_internal(path, provider, scope)
+    parse_skill_internal(path, provider, scope, None)
+}
+
+/// Parse a skill markdown file, decrypting Warp vault payloads with an optional password file.
+pub fn parse_skill_with_vault_password_file(
+    path: &Path,
+    vault_password_file: Option<&Path>,
+) -> Result<ParsedSkill> {
+    let provider = get_provider_for_path(path).unwrap_or(SkillProvider::Agents);
+    let scope = get_scope_for_path(path);
+    parse_skill_internal(path, provider, scope, vault_password_file)
 }
 
 /// Parse a bundled skill markdown file.
@@ -81,15 +91,21 @@ pub fn parse_skill(path: &Path) -> Result<ParsedSkill> {
 /// # Returns
 /// * `Result<ParsedSkill>` - Parsed skill with validated name and description
 pub fn parse_bundled_skill(path: &Path) -> Result<ParsedSkill> {
-    parse_skill_internal(path, SkillProvider::Warp, SkillScope::Bundled)
+    parse_skill_internal(path, SkillProvider::Warp, SkillScope::Bundled, None)
 }
 
 fn parse_skill_internal(
     path: &Path,
     provider: SkillProvider,
     scope: SkillScope,
+    vault_password_file: Option<&Path>,
 ) -> Result<ParsedSkill> {
-    let parsed = parse_markdown_file(path)?;
+    let parsed = match vault_password_file {
+        Some(vault_password_file) => {
+            parse_markdown_file_with_vault_password_file(path, Some(vault_password_file))?
+        }
+        None => parse_markdown_file(path)?,
+    };
 
     let name = match parsed
         .front_matter

@@ -32,6 +32,7 @@ pub mod schedule;
 pub mod secret;
 pub mod share;
 pub mod task;
+pub mod vault;
 pub const OZ_RUN_ID_ENV: &str = "OZ_RUN_ID";
 pub const OZ_PARENT_RUN_ID_ENV: &str = "OZ_PARENT_RUN_ID";
 pub const OZ_CLI_ENV: &str = "OZ_CLI";
@@ -531,6 +532,10 @@ pub enum CliCommand {
     /// Manage artifacts.
     #[command(subcommand)]
     Artifact(crate::artifact::ArtifactCommand),
+
+    /// Encrypt, decrypt, or view Warp vault files.
+    #[command(subcommand)]
+    Vault(crate::vault::VaultCommand),
 }
 
 /// A subcommand of the main Warp application. This includes all [`WorkerCommand`]s as well as app-specific debugging tools.

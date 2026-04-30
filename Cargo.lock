@@ -299,12 +299,15 @@ dependencies = [
 name = "ai"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm",
  "anyhow",
  "arborium",
+ "argon2",
  "async-channel",
  "async-fs",
  "async-trait",
  "base16ct",
+ "base64 0.22.1",
  "bincode",
  "bytes",
  "cfg-if",
@@ -328,6 +331,7 @@ dependencies = [
  "persistence",
  "priority-queue",
  "prost-types",
+ "rand 0.8.5",
  "rayon",
  "regex",
  "repo_metadata",
@@ -359,6 +363,7 @@ dependencies = [
  "warpui",
  "warpui_extras",
  "watcher",
+ "zeroize",
 ]
 
 [[package]]
@@ -1052,6 +1057,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "argon2"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c3610892ee6e0cbce8ae2700349fcf8f98adb0dbfbee85aec3c9179d29cc072"
+dependencies = [
+ "base64ct",
+ "blake2",
+ "cpufeatures",
+ "password-hash",
 ]
 
 [[package]]
@@ -2155,6 +2172,15 @@ dependencies = [
  "radium",
  "tap",
  "wyz",
+]
+
+[[package]]
+name = "blake2"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46502ad458c9a52b69d4d4d32775c788b7a1b85e8bc9d482d92250fc0e3f8efe"
+dependencies = [
+ "digest",
 ]
 
 [[package]]
@@ -3309,9 +3335,9 @@ dependencies = [
 
 [[package]]
 name = "cpufeatures"
-version = "0.2.9"
+version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a17b76ff3a4162b0b27f354a0c87015ddad39d35f9c0c36607a3bdd175dde1f1"
+checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
 dependencies = [
  "libc",
 ]
@@ -9245,6 +9271,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "password-hash"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "346f04948ba92c43e8469c1ee6736c7563d71012b17d40745260fe106aac2166"
+dependencies = [
+ "base64ct",
+ "rand_core 0.6.4",
+ "subtle",
+]
+
+[[package]]
 name = "paste"
 version = "1.0.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -14409,6 +14446,7 @@ dependencies = [
  "winreg",
  "x11rb",
  "zbus",
+ "zeroize",
 ]
 
 [[package]]

@@ -9,6 +9,7 @@ use crate::harness_support::{HarnessSupportCommand, TaskStatus};
 use crate::integration::IntegrationCommand;
 use crate::schedule::ScheduleSubcommand;
 use crate::task::{MessageCommand, TaskCommand};
+use crate::vault::VaultCommand;
 
 fn set_env_var(name: &str, value: &str) -> Option<OsString> {
     let previous = std::env::var_os(name);
@@ -70,6 +71,55 @@ fn agent_run_accepts_hidden_bedrock_inference_role_flag() {
         run_args.bedrock_inference_role.as_deref(),
         Some("arn:aws:iam::123456789012:role/test")
     );
+}
+
+#[test]
+fn agent_run_accepts_vault_password_file() {
+    let args = Args::try_parse_from([
+        "warp",
+        "agent",
+        "run",
+        "--prompt",
+        "hello",
+        "--vault-password-file",
+        "vault-password.txt",
+    ])
+    .unwrap();
+
+    let Some(Command::CommandLine(boxed_cmd)) = args.command else {
+        panic!("Expected `warp agent run` command");
+    };
+    let CliCommand::Agent(AgentCommand::Run(run_args)) = boxed_cmd.as_ref() else {
+        panic!("Expected `warp agent run` command");
+    };
+
+    assert_eq!(
+        run_args
+            .vault_password_file
+            .as_ref()
+            .and_then(|p| p.to_str()),
+        Some("vault-password.txt")
+    );
+}
+
+#[test]
+fn vault_commands_parse() {
+    for subcommand in ["encrypt", "decrypt", "view"] {
+        let args = Args::try_parse_from(["warp", "vault", subcommand, "skill.md"]).unwrap();
+        let Some(Command::CommandLine(boxed_cmd)) = args.command else {
+            panic!("Expected `warp vault` command");
+        };
+        let CliCommand::Vault(vault_cmd) = boxed_cmd.as_ref() else {
+            panic!("Expected `warp vault` command");
+        };
+
+        let file_path = match vault_cmd {
+            VaultCommand::Encrypt(args) => &args.file_path,
+            VaultCommand::Decrypt(args) => &args.file_path,
+            VaultCommand::View(args) => &args.file_path,
+        };
+        assert_eq!(file_path.to_str(), Some("skill.md"));
+    }
 }
 
 #[test]

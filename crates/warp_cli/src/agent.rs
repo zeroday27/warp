@@ -295,6 +295,10 @@ pub struct RunAgentArgs {
     #[arg(long = "conversation", value_name = "ID")]
     pub conversation: Option<String>,
 
+    /// Read the Warp vault password from this file when decrypting encrypted skills.
+    #[arg(long = "vault-password-file", value_name = "PATH")]
+    pub vault_password_file: Option<PathBuf>,
+
     /// Agent profile to configure the terminal session.
     #[arg(long = "profile", value_name = "ID")]
     pub profile: Option<String>,

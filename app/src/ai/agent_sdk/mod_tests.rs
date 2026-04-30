@@ -2,6 +2,7 @@ use serde_json::json;
 use warp_cli::{
     artifact::{ArtifactCommand, DownloadArtifactArgs, GetArtifactArgs, UploadArtifactArgs},
     task::{MessageCommand, MessageSendArgs, MessageWatchArgs, TaskCommand},
+    vault::{VaultCommand, VaultFileArgs},
     CliCommand,
 };
 use warp_core::telemetry::TelemetryEvent;
@@ -26,6 +27,25 @@ fn artifact_download_requires_auth() {
             out: None,
         },)
     )));
+}
+
+#[test]
+fn vault_does_not_require_auth() {
+    assert!(!command_requires_auth(&CliCommand::Vault(
+        VaultCommand::View(VaultFileArgs {
+            file_path: "secret.md".into(),
+        })
+    )));
+}
+
+#[test]
+fn vault_view_telemetry_has_no_payload() {
+    let event = command_to_telemetry_event(&CliCommand::Vault(VaultCommand::View(VaultFileArgs {
+        file_path: "secret.md".into(),
+    })));
+
+    assert_eq!(event.name(), "CLI.Execute.Vault.View");
+    assert_eq!(event.payload(), None);
 }
 
 #[test]

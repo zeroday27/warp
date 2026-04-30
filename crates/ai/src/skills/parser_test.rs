@@ -201,3 +201,33 @@ This is the skill content.
     // Front matter is lines 1-4, markdown content starts at line 5
     assert_eq!(result.line_range, Some(5..9));
 }
+
+#[test]
+fn test_parse_encrypted_markdown_file() {
+    let content = r#"---
+name: encrypted-skill
+description: Encrypted description
+---
+
+# Encrypted Skill
+
+Sensitive body.
+"#;
+    let temp_dir = tempfile::TempDir::new().unwrap();
+    let password_file = temp_dir.path().join("vault-password");
+    std::fs::write(&password_file, "test vault password").unwrap();
+    let encrypted =
+        crate::vault::encrypt_to_vault_text(content.as_bytes(), "test vault password").unwrap();
+    let skill_file = temp_dir.path().join("encrypted.md");
+    std::fs::write(&skill_file, encrypted).unwrap();
+
+    let result =
+        parse_markdown_file_with_vault_password_file(&skill_file, Some(&password_file)).unwrap();
+
+    assert_eq!(result.front_matter.get("name").unwrap(), "encrypted-skill");
+    assert_eq!(
+        result.front_matter.get("description").unwrap(),
+        "Encrypted description"
+    );
+    assert_eq!(result.content, content);
+}

@@ -1,3 +1,4 @@
+use crate::vault;
 use anyhow::{Context, Result};
 use regex::Regex;
 use serde_yaml::Value;
@@ -29,7 +30,21 @@ pub struct ParsedMarkdown {
 /// * `Result<ParsedMarkdown>` - Parsed document with front matter and content
 #[allow(dead_code)]
 pub fn parse_markdown_file(path: &Path) -> Result<ParsedMarkdown> {
+    parse_markdown_file_with_vault_password_file(path, None)
+}
+
+/// Parse a markdown file, decrypting Warp vault payloads with an optional password file.
+#[allow(dead_code)]
+pub fn parse_markdown_file_with_vault_password_file(
+    path: &Path,
+    vault_password_file: Option<&Path>,
+) -> Result<ParsedMarkdown> {
     let content = fs::read_to_string(path)?;
+    if vault::is_vault_payload(&content) {
+        let content = vault::decrypt_to_string(&content, vault_password_file)
+            .with_context(|| format!("Failed to decrypt vault file '{}'", path.display()))?;
+        return parse_markdown_content(&content);
+    }
     parse_markdown_content(&content)
 }
 

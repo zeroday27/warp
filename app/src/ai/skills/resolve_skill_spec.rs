@@ -14,7 +14,8 @@
 use std::path::{Path, PathBuf};
 
 use ai::skills::{
-    home_skills_path, parse_skill, ParsedSkill, SkillProvider, SKILL_PROVIDER_DEFINITIONS,
+    home_skills_path, parse_skill_with_vault_password_file, ParsedSkill, SkillProvider,
+    SKILL_PROVIDER_DEFINITIONS,
 };
 use command::blocking::Command;
 use command::r#async::Command as AsyncCommand;
@@ -39,6 +40,7 @@ pub struct ResolvedSkill {
 fn resolve_from_skill_dirs_by_directory_scan(
     spec: &SkillSpec,
     skill_dirs: impl IntoIterator<Item = PathBuf>,
+    vault_password_file: Option<&Path>,
 ) -> Result<Option<ResolvedSkill>, ResolveSkillError> {
     if spec.is_full_path() {
         return Ok(None);
@@ -48,10 +50,7 @@ fn resolve_from_skill_dirs_by_directory_scan(
         let path = skill_dir.join(&spec.skill_identifier).join(SKILL_FILE_NAME);
 
         if path.exists() {
-            let parsed = parse_skill(&path).map_err(|err| ResolveSkillError::ParseFailed {
-                path: path.clone(),
-                message: err.to_string(),
-            })?;
+            let parsed = parse_skill_for_resolution(&path, vault_password_file)?;
 
             return Ok(Some(to_resolved_skill(path, parsed)));
         }
@@ -123,16 +122,19 @@ pub enum ResolveSkillError {
 ///   5. Finally, fall back to scanning the filesystem relative to `working_dir`.
 ///
 /// Once a SKILL.md is selected, we return the parsed instruction body (front matter stripped).
-pub fn resolve_skill_spec(
+pub fn resolve_skill_spec_with_vault_password_file(
     spec: &SkillSpec,
     working_dir: &Path,
+    vault_password_file: Option<&Path>,
     ctx: &AppContext,
 ) -> Result<ResolvedSkill, ResolveSkillError> {
     let skill_manager = SkillManager::as_ref(ctx);
 
     match &spec.repo {
-        Some(repo) => resolve_repo_qualified(spec, repo, working_dir, skill_manager, ctx),
-        None => resolve_unqualified(spec, working_dir, ctx, skill_manager),
+        Some(repo) => {
+            resolve_repo_qualified(spec, repo, working_dir, skill_manager, vault_password_file)
+        }
+        None => resolve_unqualified(spec, working_dir, skill_manager, vault_password_file, ctx),
     }
 }
 
@@ -208,7 +210,7 @@ fn resolve_repo_qualified(
     repo: &str,
     working_dir: &Path,
     skill_manager: &SkillManager,
-    _ctx: &AppContext,
+    vault_password_file: Option<&Path>,
 ) -> Result<ResolvedSkill, ResolveSkillError> {
     // Find directories with skills where the directory name matches the repo.
     // This includes both repo roots and subdirectories.
@@ -263,7 +265,7 @@ fn resolve_repo_qualified(
     candidate_repo_roots.sort();
 
     for repo_root in candidate_repo_roots {
-        match resolve_in_single_repo_root(spec, &repo_root, skill_manager) {
+        match resolve_in_single_repo_root(spec, &repo_root, skill_manager, vault_password_file) {
             Ok(resolved) => return Ok(resolved),
             Err(ResolveSkillError::NotFound { .. }) => {}
             Err(err) => return Err(err),
@@ -278,13 +280,16 @@ fn resolve_repo_qualified(
 fn resolve_unqualified(
     spec: &SkillSpec,
     working_dir: &Path,
-    ctx: &AppContext,
     skill_manager: &SkillManager,
+    vault_password_file: Option<&Path>,
+    ctx: &AppContext,
 ) -> Result<ResolvedSkill, ResolveSkillError> {
     // If the skill_path is a full path, skip cache lookup and go straight to disk resolution.
     // Full paths don't match skill names in the cache.
     if spec.is_full_path() {
-        if let Some(resolved) = resolve_from_root_path_by_directory_scan(spec, working_dir)? {
+        if let Some(resolved) =
+            resolve_from_root_path_by_directory_scan(spec, working_dir, vault_password_file)?
+        {
             return Ok(resolved);
         }
         return Err(ResolveSkillError::NotFound {
@@ -307,13 +312,14 @@ fn resolve_unqualified(
 
     if let Some(skill_path) = best_match_by_directory_precedence(home_matches, home_dir.as_deref())
     {
-        return parsed_skill_from_manager_or_disk(skill_manager, &skill_path)
+        return parsed_skill_from_manager_or_disk(skill_manager, &skill_path, vault_password_file)
             .map(|parsed| to_resolved_skill(skill_path, parsed));
     }
-
-    if let Some(resolved) =
-        resolve_from_skill_dirs_by_directory_scan(spec, home_skill_dirs_for_resolution())?
-    {
+    if let Some(resolved) = resolve_from_skill_dirs_by_directory_scan(
+        spec,
+        home_skill_dirs_for_resolution(),
+        vault_password_file,
+    )? {
         return Ok(resolved);
     }
 
@@ -322,7 +328,7 @@ fn resolve_unqualified(
         .get_root_for_path(working_dir);
 
     if let Some(repo_root) = repo_root {
-        match resolve_in_single_repo_root(spec, &repo_root, skill_manager) {
+        match resolve_in_single_repo_root(spec, &repo_root, skill_manager, vault_password_file) {
             Ok(resolved) => return Ok(resolved),
             Err(ResolveSkillError::NotFound { .. }) => {}
             Err(err) => return Err(err),
@@ -340,7 +346,7 @@ fn resolve_unqualified(
 
     if in_scope_matches.len() == 1 {
         let skill_path = in_scope_matches[0].clone();
-        return parsed_skill_from_manager_or_disk(skill_manager, &skill_path)
+        return parsed_skill_from_manager_or_disk(skill_manager, &skill_path, vault_password_file)
             .map(|parsed| to_resolved_skill(skill_path, parsed));
     }
 
@@ -352,7 +358,9 @@ fn resolve_unqualified(
     }
 
     // Fallback: if SkillManager hasn't cached anything yet, try resolving relative to the working dir.
-    if let Some(resolved) = resolve_from_root_path_by_directory_scan(spec, working_dir)? {
+    if let Some(resolved) =
+        resolve_from_root_path_by_directory_scan(spec, working_dir, vault_password_file)?
+    {
         return Ok(resolved);
     }
 
@@ -365,11 +373,14 @@ fn resolve_in_single_repo_root(
     spec: &SkillSpec,
     repo_root: &Path,
     skill_manager: &SkillManager,
+    vault_password_file: Option<&Path>,
 ) -> Result<ResolvedSkill, ResolveSkillError> {
     // If the skill_path is a full path, skip cache lookup and go straight to disk resolution.
     // Full paths don't match skill names in the cache.
     if spec.is_full_path() {
-        if let Some(resolved) = resolve_from_root_path_by_directory_scan(spec, repo_root)? {
+        if let Some(resolved) =
+            resolve_from_root_path_by_directory_scan(spec, repo_root, vault_password_file)?
+        {
             return Ok(resolved);
         }
         return Err(ResolveSkillError::NotFound {
@@ -387,12 +398,15 @@ fn resolve_in_single_repo_root(
         .collect();
 
     if let Some(best_path) = best_match_by_directory_precedence(cached_paths, Some(repo_root)) {
-        let parsed = parsed_skill_from_manager_or_disk(skill_manager, &best_path)?;
+        let parsed =
+            parsed_skill_from_manager_or_disk(skill_manager, &best_path, vault_password_file)?;
         return Ok(to_resolved_skill(best_path, parsed));
     }
 
     // Cold start fallback: check disk in precedence order.
-    if let Some(resolved) = resolve_from_root_path_by_directory_scan(spec, repo_root)? {
+    if let Some(resolved) =
+        resolve_from_root_path_by_directory_scan(spec, repo_root, vault_password_file)?
+    {
         return Ok(resolved);
     }
 
@@ -404,6 +418,7 @@ fn resolve_in_single_repo_root(
 fn resolve_from_root_path_by_directory_scan(
     spec: &SkillSpec,
     root: &Path,
+    vault_password_file: Option<&Path>,
 ) -> Result<Option<ResolvedSkill>, ResolveSkillError> {
     // If the skill_path is a full path (contains "/" or ends with ".md"),
     // try to resolve it directly without iterating through SKILL_PROVIDER_DEFINITIONS.
@@ -418,10 +433,7 @@ fn resolve_from_root_path_by_directory_scan(
 
         let path = root.join(&spec.skill_identifier);
         if path.exists() {
-            let parsed = parse_skill(&path).map_err(|err| ResolveSkillError::ParseFailed {
-                path: path.clone(),
-                message: err.to_string(),
-            })?;
+            let parsed = parse_skill_for_resolution(&path, vault_password_file)?;
 
             return Ok(Some(to_resolved_skill(path, parsed)));
         }
@@ -437,10 +449,7 @@ fn resolve_from_root_path_by_directory_scan(
             .join(SKILL_FILE_NAME);
 
         if path.exists() {
-            let parsed = parse_skill(&path).map_err(|err| ResolveSkillError::ParseFailed {
-                path: path.clone(),
-                message: err.to_string(),
-            })?;
+            let parsed = parse_skill_for_resolution(&path, vault_password_file)?;
 
             return Ok(Some(to_resolved_skill(path, parsed)));
         }
@@ -452,14 +461,23 @@ fn resolve_from_root_path_by_directory_scan(
 fn parsed_skill_from_manager_or_disk(
     skill_manager: &SkillManager,
     skill_path: &Path,
+    vault_password_file: Option<&Path>,
 ) -> Result<ParsedSkill, ResolveSkillError> {
     if let Some(parsed) = skill_manager.skill_by_path(skill_path).cloned() {
         return Ok(parsed);
     }
+    parse_skill_for_resolution(skill_path, vault_password_file)
+}
 
-    parse_skill(skill_path).map_err(|err| ResolveSkillError::ParseFailed {
-        path: skill_path.to_path_buf(),
-        message: err.to_string(),
+fn parse_skill_for_resolution(
+    skill_path: &Path,
+    vault_password_file: Option<&Path>,
+) -> Result<ParsedSkill, ResolveSkillError> {
+    parse_skill_with_vault_password_file(skill_path, vault_password_file).map_err(|err| {
+        ResolveSkillError::ParseFailed {
+            path: skill_path.to_path_buf(),
+            message: err.to_string(),
+        }
     })
 }
 

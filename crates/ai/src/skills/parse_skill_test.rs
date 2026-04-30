@@ -246,3 +246,28 @@ fn test_truncation_cuts_at_sentence_boundary() {
 
     assert_eq!(result.description, "This is a sentence.");
 }
+
+#[test]
+fn test_parse_encrypted_skill_with_password_file() {
+    let content = r#"---
+name: vault-skill
+description: Vault backed skill
+---
+
+# Vault Skill
+
+Sensitive body.
+"#;
+    let (_temp_dir, skill_file) = create_temp_skill_file(content);
+    let password_file = skill_file.parent().unwrap().join("vault-password");
+    std::fs::write(&password_file, "vault-password\n").unwrap();
+    let encrypted =
+        crate::vault::encrypt_to_vault_text(content.as_bytes(), "vault-password").unwrap();
+    std::fs::write(&skill_file, encrypted).unwrap();
+
+    let result = parse_skill_with_vault_password_file(&skill_file, Some(&password_file)).unwrap();
+
+    assert_eq!(result.name, "vault-skill");
+    assert_eq!(result.description, "Vault backed skill");
+    assert_eq!(result.content, content);
+}
